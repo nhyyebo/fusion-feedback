@@ -1,0 +1,54 @@
+name: Protect Labels
+
+on:
+  pull_request:
+    types: [labeled, unlabeled]
+  issues:
+    types: [labeled, unlabeled]
+
+jobs:
+  check-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check label permissions
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const allowedUsers = ['nhyyebo', 'qooode'];
+            const protectedLabels = ['changelog', 'roadmap:inprogress', 'roadmap:planned', 'roadmap:completed'];
+            
+            const payload = context.payload;
+            const actor = context.actor;
+            const labels = payload.issue ? payload.issue.labels : payload.pull_request.labels;
+            const issueNumber = payload.issue ? payload.issue.number : payload.pull_request.number;
+            const labelChange = payload.label.name;
+            
+            // Check if this is a protected label
+            if (protectedLabels.includes(labelChange)) {
+              // Check if user is authorized
+              if (allowedUsers.includes(actor)) {
+                // Authorized user - add confirmation comment
+                const action = payload.action; // 'labeled' or 'unlabeled'
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `✅ @${actor} is authorized to ${action === 'labeled' ? 'add' : 'remove'} the "${labelChange}" label.`
+                });
+              } else {
+                // Unauthorized user - remove label and add warning
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: labelChange
+                });
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: `⚠️ The label "${labelChange}" can only be added or removed by authorized users (@nhyyebo, @qooode).`
+                });
+              }
+            }
